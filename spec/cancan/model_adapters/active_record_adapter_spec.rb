@@ -40,6 +40,7 @@ RSpec.describe CanCan::ModelAdapters::ActiveRecordAdapter do
         t.integer :category_id
         t.integer :project_id
         t.integer :user_id
+        t.integer :company_id
       end
 
       create_table(:comments) do |t|
@@ -68,6 +69,7 @@ RSpec.describe CanCan::ModelAdapters::ActiveRecordAdapter do
 
       create_table(:users) do |t|
         t.string :name
+        t.integer :company_id
         t.timestamps null: false
       end
     end
@@ -82,6 +84,7 @@ RSpec.describe CanCan::ModelAdapters::ActiveRecordAdapter do
     end
 
     class Company < ActiveRecord::Base
+      has_many :users
     end
 
     class Article < ActiveRecord::Base
@@ -127,6 +130,7 @@ RSpec.describe CanCan::ModelAdapters::ActiveRecordAdapter do
       has_many :mentions
       has_many :mentioned_articles, through: :mentions, source: :article
       has_many :comments, through: :articles
+      belongs_to :company
     end
 
     (@ability = double).extend(CanCan::Ability)
@@ -1495,6 +1499,29 @@ RSpec.describe CanCan::ModelAdapters::ActiveRecordAdapter do
       expect(Vehicle.accessible_by(ability)).to match_array([car])
       expect(Car.accessible_by(ability)).to eq([car])
       expect(Motorbike.accessible_by(ability)).to eq([])
+    end
+  end
+
+  context 'when there are multiple conditions' do
+    it 'merges the conditions correctly' do
+      c1 = Company.create!
+      u1 = c1.users.create!(name: 'sporty spice')
+      u2 = User.create!(name: 'posh spice')
+
+      ability = Ability.new(u1)
+      ability.can :read, Mention, user: { company: c1 }
+      ability.can :read, Mention, article: { user: { company: c1 } }
+
+      a1 = Article.create!(company: c1, user: u1)
+      m1 = Mention.create!(user: u1, article: a1)
+      a2 = Article.create!(company: c1, user: u2)
+      m2 = Mention.create!(user: u1, article: a2)
+      a3 = Article.create!(company: nil, user: u1)
+      m3 = Mention.create!(user: u2, article: a3)
+      a4 = Article.create!(company: nil, user: u2)
+      m4 = Mention.create!(user: u2, article: a4)
+
+      expect(Mention.accessible_by(ability)).to match_array([m1, m2, m3])
     end
   end
 end
